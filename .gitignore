@@ -1,0 +1,52 @@
+# Local working copies
+img readme/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Env files (secrets). Only templates are tracked.
+.env
+*.env
+.env.*
+!.env.example
+!backend/.env.selfhosted
+*.local
+
+# pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Logs
+*.log
+
+# Node / frontend build
+node_modules/
+frontend/dist/
+
+# Local agent / editor tooling
+.agents/
+.claude/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Celery beat local schedule state
+celerybeat-schedule*

@@ -1,0 +1,105 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: mailox
+      POSTGRES_PASSWORD: mailox_pass
+      POSTGRES_DB: mailox
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mailox -d mailox"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  db_test:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: mailox
+      POSTGRES_PASSWORD: mailox_pass
+      POSTGRES_DB: mailox_test
+    ports:
+      - "127.0.0.1:5433:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mailox -d mailox_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --requirepass redis_pass
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "redis_pass", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ../backend
+      dockerfile: ../docker/Dockerfile.backend
+    env_file:
+      - ../.env
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ../backend:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  worker:
+    build:
+      context: ../backend
+      dockerfile: ../docker/Dockerfile.backend
+    env_file:
+      - ../.env
+    volumes:
+      - ../backend:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      celery -A app.worker.celery_app:celery_app worker
+      --loglevel=info
+      --concurrency=${WORKER_CONCURRENCY:-4}
+      --queues=celery
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.worker.celery_app:celery_app inspect ping -d celery@$$HOSTNAME"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  beat:
+    build:
+      context: ../backend
+      dockerfile: ../docker/Dockerfile.backend
+    env_file:
+      - ../.env
+    volumes:
+      - ../backend:/app
+    depends_on:
+      - worker
+    command: >
+      celery -A app.worker.celery_app:celery_app beat
+      --loglevel=info
+      --scheduler celery.beat:PersistentScheduler
+
+volumes:
+  postgres_data:
+  redis_data:

@@ -1,0 +1,129 @@
+services:
+  postgres-test:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: mailox
+      POSTGRES_PASSWORD: mailox_pass
+      POSTGRES_DB: mailox_test
+    ports:
+      - "127.0.0.1:5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mailox -d mailox_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    tmpfs:
+      - /var/lib/postgresql/data   # In-memory for fast test teardown
+
+  redis-test:
+    image: redis:7-alpine
+    command: redis-server --requirepass redis_test_pass --loglevel warning
+    ports:
+      - "127.0.0.1:6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "redis_test_pass", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  worker-a:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: celery -A app.worker.celery_app worker --loglevel=info --concurrency=1 --hostname=worker-a@%h
+    environment:
+      DATABASE_URL: postgresql+asyncpg://mailox:mailox_pass@postgres-test:5432/mailox_test
+      DATABASE_URL_SYNC: postgresql+psycopg2://mailox:mailox_pass@postgres-test:5432/mailox_test
+      REDIS_URL: redis://:redis_test_pass@redis-test:6379/0
+      CELERY_BROKER_URL: redis://:redis_test_pass@redis-test:6379/1
+      CELERY_RESULT_BACKEND: redis://:redis_test_pass@redis-test:6379/2
+      SECRET_KEY: test_secret_key_for_integration_tests_at_least_32
+      REFRESH_SECRET_KEY: test_refresh_key_for_integration_tests_at_least_32
+      MASTER_ENCRYPTION_KEY: test_master_key_for_integration_tests_at_least_32
+      ALLOWED_ORIGINS: "http://localhost:3000"
+      WORKER_LEASE_DURATION_SECONDS: "30"
+      WORKER_HEARTBEAT_INTERVAL_SECONDS: "10"
+      SCAN_STALL_TIMEOUT_SECONDS: "35"
+      SCAN_TASK_TIMEOUT_SECONDS: "60"
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+
+  worker-b:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: celery -A app.worker.celery_app worker --loglevel=info --concurrency=1 --hostname=worker-b@%h
+    environment:
+      DATABASE_URL: postgresql+asyncpg://mailox:mailox_pass@postgres-test:5432/mailox_test
+      DATABASE_URL_SYNC: postgresql+psycopg2://mailox:mailox_pass@postgres-test:5432/mailox_test
+      REDIS_URL: redis://:redis_test_pass@redis-test:6379/0
+      CELERY_BROKER_URL: redis://:redis_test_pass@redis-test:6379/1
+      CELERY_RESULT_BACKEND: redis://:redis_test_pass@redis-test:6379/2
+      SECRET_KEY: test_secret_key_for_integration_tests_at_least_32
+      REFRESH_SECRET_KEY: test_refresh_key_for_integration_tests_at_least_32
+      MASTER_ENCRYPTION_KEY: test_master_key_for_integration_tests_at_least_32
+      ALLOWED_ORIGINS: "http://localhost:3000"
+      WORKER_LEASE_DURATION_SECONDS: "30"
+      WORKER_HEARTBEAT_INTERVAL_SECONDS: "10"
+      SCAN_STALL_TIMEOUT_SECONDS: "35"
+      SCAN_TASK_TIMEOUT_SECONDS: "60"
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+
+  beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: celery -A app.worker.celery_app beat --loglevel=info --schedule=/tmp/celerybeat-schedule
+    environment:
+      DATABASE_URL: postgresql+asyncpg://mailox:mailox_pass@postgres-test:5432/mailox_test
+      DATABASE_URL_SYNC: postgresql+psycopg2://mailox:mailox_pass@postgres-test:5432/mailox_test
+      REDIS_URL: redis://:redis_test_pass@redis-test:6379/0
+      CELERY_BROKER_URL: redis://:redis_test_pass@redis-test:6379/1
+      CELERY_RESULT_BACKEND: redis://:redis_test_pass@redis-test:6379/2
+      SECRET_KEY: test_secret_key_for_integration_tests_at_least_32
+      REFRESH_SECRET_KEY: test_refresh_key_for_integration_tests_at_least_32
+      MASTER_ENCRYPTION_KEY: test_master_key_for_integration_tests_at_least_32
+      ALLOWED_ORIGINS: "http://localhost:3000"
+      WORKER_LEASE_DURATION_SECONDS: "30"
+      WORKER_HEARTBEAT_INTERVAL_SECONDS: "10"
+      SCAN_STALL_TIMEOUT_SECONDS: "35"
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
+    ports:
+      - "127.0.0.1:8001:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://mailox:mailox_pass@postgres-test:5432/mailox_test
+      DATABASE_URL_SYNC: postgresql+psycopg2://mailox:mailox_pass@postgres-test:5432/mailox_test
+      REDIS_URL: redis://:redis_test_pass@redis-test:6379/0
+      CELERY_BROKER_URL: redis://:redis_test_pass@redis-test:6379/1
+      CELERY_RESULT_BACKEND: redis://:redis_test_pass@redis-test:6379/2
+      SECRET_KEY: test_secret_key_for_integration_tests_at_least_32
+      REFRESH_SECRET_KEY: test_refresh_key_for_integration_tests_at_least_32
+      MASTER_ENCRYPTION_KEY: test_master_key_for_integration_tests_at_least_32
+      ALLOWED_ORIGINS: "http://localhost:3000"
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/meta"]
+      interval: 10s
+      timeout: 5s
+      retries: 10

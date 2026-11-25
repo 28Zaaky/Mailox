@@ -1,0 +1,24 @@
+# Secrets and local config: never bake them into an image layer
+.env
+.env.*
+*.env
+!.env.example
+
+# Local dev artefacts
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.log
+celerybeat-schedule*
+
+# Not needed at runtime
+tests/
+docs/
+*.md
+.git/
+.gitignore
+.dockerignore
